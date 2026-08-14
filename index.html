@@ -18,31 +18,36 @@
             overflow: hidden;
             background: #0f0d0b;
             font-family: 'Georgia', serif;
-            overscroll-behavior-y: none;
+            /* Bloquea por completo el rebote elástico del móvil */
+            overscroll-behavior: none;
+            touch-action: none;
         }
 
         /* --- 1. VIEWER & RESPONSIVE CANVAS --- */
         #visor {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
             overflow: hidden;
-            position: relative;
             cursor: grab;
             background-color: #12100e;
+            /* Evita que el navegador capture los gestos horizontales para ir atrás/adelante */
+            touch-action: none;
         }
         #visor.grabbing {
             cursor: grabbing;
         }
 
         #lienzo {
-            /* Un 40% más grande que la pantalla actual */
-            width: 140vw;
-            height: 140vh;
+            /* Un 50% extra para que haya buen margen de recorrido sin perderse */
+            width: 150vw;
+            height: 150vh;
             position: absolute;
             top: 0;
             left: 0;
             transform-origin: 0 0;
-            /* Fondo con tu imagen */
             background:
                 radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.05) 0%, transparent 70%),
                 url("images/fondo.jpg");
@@ -52,6 +57,7 @@
             background-repeat: no-repeat;
 
             border: 4px solid #3d2f1f;
+            touch-action: none;
         }
 
         /* Decorative cartographic elements */
@@ -85,8 +91,8 @@
         /* --- 2. INTERACTIVE LIGHT NODES --- */
         .punto-luz {
             position: absolute;
-            width: 26px;
-            height: 26px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             background: #fffdf0;
             border: 2px solid #ffd700;
@@ -107,7 +113,7 @@
 
         .punto-luz span.etiqueta {
             position: absolute;
-            top: 32px;
+            top: 34px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(18, 14, 10, 0.85);
@@ -421,34 +427,37 @@
             lienzo.style.transform = `translate(${curX}px, ${curY}px)`;
         }
 
-        // Calcula dimensiones dinámicas reales
-        function getLienzoBounds() {
+        function getLimites() {
+            const vW = visor.clientWidth;
+            const vH = visor.clientHeight;
+            const lW = lienzo.offsetWidth;
+            const lH = lienzo.offsetHeight;
+
             return {
-                w: lienzo.offsetWidth,
-                h: lienzo.offsetHeight
+                minX: vW - lW,
+                minY: vH - lH,
+                vW: vW,
+                vH: vH,
+                lW: lW,
+                lH: lH
             };
         }
 
         function centrarLienzo() {
-            const bounds = getLienzoBounds();
-            curX = -(bounds.w - window.innerWidth) / 2;
-            curY = -(bounds.h - window.innerHeight) / 2;
+            const lim = getLimites();
+            curX = (lim.vW - lim.lW) / 2;
+            curY = (lim.vH - lim.lH) / 2;
             actualizarPosicion();
         }
 
-        // Se centra automáticamente al cargar la página
         window.addEventListener('load', centrarLienzo);
-        // Si se redimensiona o rota la pantalla, recalcula los límites
         window.addEventListener('resize', () => {
-            const bounds = getLienzoBounds();
-            const minX = window.innerWidth - bounds.w;
-            const minY = window.innerHeight - bounds.h;
-            curX = Math.min(0, Math.max(minX, curX));
-            curY = Math.min(0, Math.max(minY, curY));
+            const lim = getLimites();
+            curX = Math.min(0, Math.max(lim.minX, curX));
+            curY = Math.min(0, Math.max(lim.minY, curY));
             actualizarPosicion();
         });
 
-        // Helper para extraer coordenadas de ratón y táctiles
         function getPos(e) {
             if (e.touches && e.touches.length > 0) {
                 return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -467,17 +476,16 @@
 
         function panMove(e) {
             if (!isPanning) return;
-            e.preventDefault();
+            if (e.cancelable) e.preventDefault();
+
             const pos = getPos(e);
             curX = pos.x - startX;
             curY = pos.y - startY;
 
-            // Restricción dinámica según el tamaño actual de la pantalla
-            const bounds = getLienzoBounds();
-            const minX = window.innerWidth - bounds.w;
-            const minY = window.innerHeight - bounds.h;
-            curX = Math.min(0, Math.max(minX, curX));
-            curY = Math.min(0, Math.max(minY, curY));
+            // Restricción precisa contra el tamaño real visible del visor
+            const lim = getLimites();
+            curX = Math.min(0, Math.max(lim.minX, curX));
+            curY = Math.min(0, Math.max(lim.minY, curY));
 
             actualizarPosicion();
         }
@@ -487,15 +495,16 @@
             visor.classList.remove('grabbing');
         }
 
-        // Eventos de ratón
+        // Ratón
         visor.addEventListener('mousedown', panStart);
         window.addEventListener('mousemove', panMove, { passive: false });
         window.addEventListener('mouseup', panEnd);
 
-        // Eventos táctiles (móvil y tablet)
+        // Táctil (móviles/tablets)
         visor.addEventListener('touchstart', panStart, { passive: false });
         window.addEventListener('touchmove', panMove, { passive: false });
         window.addEventListener('touchend', panEnd);
+        window.addEventListener('touchcancel', panEnd);
 
         // Modales
         function abrirModal(id) {
