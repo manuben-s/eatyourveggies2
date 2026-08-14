@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- El viewport meta es crucial para móviles -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mind Map - Interactive Scrolls</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none; /* Evita seleccionar texto al arrastrar */
+            -webkit-user-select: none; /* Para Safari en iOS */
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0f0d0b;
+            font-family: 'Georgia', serif;
+            /* Evita el efecto de rebote en iOS al hacer scroll */
+            overscroll-behavior-y: none; 
+        }
+
+        /* --- 1. VIEWER & GIANT CANVAS --- */
+        #visor {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+            background-color: #12100e;
+        }
+        #visor.grabbing {
+            cursor: grabbing;
+        }
+
+        #lienzo {
+            width: 3200px;
+            height: 2400px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+            background:
+                radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.05) 0%, transparent 70%),
+                url("images/fondo.jpg");
+            background-size: 100% 100%;
+            background-position: center, center;
+            background-repeat: no-repeat;
+            border: 4px solid #3d2f1f;
+        }
+
+        .brujula {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            border: 1px dashed rgba(212, 175, 55, 0.15);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        .brujula::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 800px;
+            height: 800px;
+            transform: translate(-50%, -50%);
+            border: 1px solid rgba(212, 175, 55, 0.08);
+            border-radius: 50%;
+        }
+
+        /* --- 2. INTERACTIVE LIGHT NODES --- */
+        .punto-luz {
+            position: absolute;
+            width: 30px; /* Un poco más grande para facilitar el toque en móvil */
+            height: 30px;
+            border-radius: 50%;
+            background: #fffdf0;
+            border: 2px solid #ffd700;
+            cursor: pointer;
+            box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8), 0 0 40px 15px rgba(255, 140, 0, 0.4);
+            animation: respiracion 2s infinite alternate ease-in-out;
+            z-index: 10;
+            transition: transform 0.2s;
+            /* Mejora la respuesta táctil */
+            touch-action: none; 
+        }
+        /* Solo aplica el hover en dispositivos que usen ratón */
+        @media (hover: hover) and (pointer: fine) {
+            .punto-luz:hover {
+                transform: scale(1.4);
+                box-shadow: 0 0 30px 12px rgba(255, 255, 255, 1), 0 0 60px 25px rgba(255, 215, 0, 0.8);
+            }
+        }
+        
+        .punto-luz span.etiqueta {
+            position: absolute;
+            top: 35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(18, 14, 10, 0.85);
+            color: #ecd5a5;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            font-size: 13px;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        @keyframes respiracion {
+            0% { box-shadow: 0 0 15px 5px rgba(255, 215, 0, 0.6), 0 0 30px 10px rgba(255, 140, 0, 0.3); }
+            100% { box-shadow: 0 0 28px 12px rgba(255, 255, 220, 0.9), 0 0 55px 20px rgba(255, 165, 0, 0.6); }
+        }
+
+        /* --- 3. SCROLL-STYLE MODAL WINDOWS --- */
+        .modal-fondo {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(5, 4, 3, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .modal-fondo.activa {
+            display: flex;
+            opacity: 1;
+        }
+
+        .papiro {
+            width: 90%;
+            max-width: 550px;
+            max-height: 85vh; /* Evita que se salga de pantalla en vertical */
+            overflow-y: auto; /* Permite hacer scroll dentro del papiro */
+            background: #edd8b4;
+            background-image: 
+                radial-gradient(ellipse at center, transparent 60%, rgba(139, 90, 43, 0.25) 100%),
+                linear-gradient(to right, rgba(0,0,0,0.05), transparent 10%, transparent 90%, rgba(0,0,0,0.05));
+            border-top: 12px solid #5a3d28;
+            border-bottom: 12px solid #5a3d28;
+            border-radius: 6px;
+            padding: 35px 30px;
+            color: #3b2312;
+            position: relative;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(90, 61, 40, 0.6);
+            transform: scaleY(0.1) rotateX(40deg);
+            transform-origin: top center;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal-fondo.activa .papiro {
+            transform: scaleY(1) rotateX(0deg);
+        }
+
+        .boton-cerrar {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 32px; /* Más grande para poder tocarlo bien en móvil */
+            font-weight: bold;
+            color: #6b4423;
+            cursor: pointer;
+            line-height: 1;
+            padding: 5px; /* Área de toque más amplia */
+        }
+
+        .papiro h2 {
+            margin-top: 0;
+            font-size: 22px;
+            border-bottom: 2px solid #c9a779;
+            padding-bottom: 8px;
+            color: #4a2912;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding-right: 30px; /* Evita que el título se solape con la X */
+        }
+        .papiro p { font-size: 15px; line-height: 1.6; margin: 12px 0; }
+
+        /* --- 4. CLIPPY & INSTRUCTIONS --- */
+        #clipy-container {
+            position: fixed;
+            bottom: 75px;
+            right: 25px;
+            z-index: 50;
+            display: flex;
+            align-items: flex-end;
+            pointer-events: none;
+        }
+        #clipy-icon {
+            width: 110px;
+            height: 130px;
+            background-image: url("images/clipy.png");
+            background-size: contain;
+            background-position: bottom right;
+            background-repeat: no-repeat;
+            pointer-events: auto;
+            filter: drop-shadow(0 6px 14px rgba(0,0,0,0.7));
+        }
+        #clipy-dialog {
+            background: #edd8b4;
+            background-image: radial-gradient(ellipse at center, transparent 60%, rgba(139, 90, 43, 0.2) 100%);
+            border: 2px solid #5a3d28;
+            border-radius: 14px 14px 0px 14px;
+            padding: 14px 18px;
+            color: #3b2312;
+            font-size: 14px;
+            line-height: 1.45;
+            max-width: 270px;
+            margin-right: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 12px 25px rgba(0,0,0,0.6);
+            pointer-events: auto;
+            position: relative;
+        }
+        #clipy-dialog strong { color: #702915; }
+        #clipy-dialog::after {
+            content: '';
+            position: absolute;
+            right: -10px;
+            bottom: 0;
+            border-left: 10px solid #5a3d28;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+
+        /* --- 5. HUD CONTROLS --- */
+        .hud-controles {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            display: flex;
+            gap: 10px;
+            z-index: 50;
+        }
+        .hud-btn {
+            background: #241c14;
+            color: #e8d0a7;
+            border: 1px solid #705335;
+            padding: 12px 18px; /* Botones más altos para pantallas táctiles */
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.2s;
+        }
+
+        /* --- 6. MEDIA QUERIES PARA MÓVILES (Responsiveness) --- */
+        @media screen and (max-width: 768px) {
+            /* Achicar el papiro y sus fuentes */
+            .papiro { padding: 25px 15px; }
+            .papiro h2 { font-size: 18px; }
+            .papiro p { font-size: 14px; }
+            
+            /* Hacer que las etiquetas no molesten tanto en la pantalla pequeña */
+            .punto-luz span.etiqueta { font-size: 11px; top: 30px; }
+
+            /* Achicar a Clippy y su diálogo para que no tapen todo */
+            #clipy-icon { width: 70px; height: 90px; }
+            #clipy-dialog {
+                font-size: 12px;
+                padding: 10px 12px;
+                max-width: 180px;
+                margin-right: 5px;
+                margin-bottom: 15px;
+            }
+            #clipy-container { bottom: 65px; right: 15px; }
+            .hud-controles { bottom: 15px; right: 15px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- MAIN VIEWER -->
+    <div id="visor">
+        <div id="lienzo">
+            <div class="brujula"></div>
+
+            <!-- Node 1: Audio / Music -->
+            <div class="punto-luz" style="top: 38%; left: 35%;" onclick="abrirModal('modal-audio')">
+                <span class="etiqueta">Whispers & Frequencies</span>
+            </div>
+
+            <!-- Node 2: Gallery / Sketches -->
+            <div class="punto-luz" style="top: 28%; left: 62%;" onclick="abrirModal('modal-imagen')">
+                <span class="etiqueta">Hidden Sketches</span>
+            </div>
+
+            <!-- Node 3: Manuscript / Text -->
+            <div class="punto-luz" style="top: 65%; left: 45%;" onclick="abrirModal('modal-nota')">
+                <span class="etiqueta">Field Notes</span>
+            </div>
+
+            <!-- Node 4: Coordinates / Map -->
+            <div class="punto-luz" style="top: 55%; left: 72%;" onclick="abrirModal('modal-mapa')">
+                <span class="etiqueta">Sacred Cartography</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLIPPY ASSISTANT WITH INSTRUCTIONS -->
+    <div id="clipy-container">
+        <div id="clipy-dialog" onclick="this.style.display='none'">
+            <strong>Greetings, traveler!</strong><br>
+            Drag across the map to explore. Tap on the <strong>glowing lights</strong> to unveil ancient scrolls! <br><i>(Tap to dismiss)</i>
+        </div>
+        <div id="clipy-icon"></div>
+    </div>
+
+    <!-- FLOATING HUD CONTROLS -->
+    <div class="hud-controles">
+        <button class="hud-btn" onclick="centrarLienzo()">Center Map</button>
+    </div>
+
+    <!-- MODAL 1: AUDIO -->
+    <div id="modal-audio" class="modal-fondo" onclick="cerrarAlFondo(event, 'modal-audio')">
+        <div class="papiro">
+            <span class="boton-cerrar" onclick="cerrarModal('modal-audio')">&times;</span>
+            <h2>Frequencies & Acoustics</h2>
+            <p>Field recordings and soundscapes gathered during the latest expedition.</p>
+            <div style="background: rgba(90, 61, 40, 0.15); padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 13px;"><strong>Track:</strong> "Night_Echo_Master.mp3"</p>
+                <audio controls style="width: 100%;">
+                    <source src="https://actions.google.com/sounds/v1/ambiences/rain_heavy.ogg" type="audio/ogg">
+                    Your browser does not support HTML5 audio.
+                </audio>
+            </div>
+            <p><em>"Sound travels faster through damp stone..."</em></p>
+        </div>
+    </div>
+
+    <!-- MODAL 2: SKETCHES -->
+    <div id="modal-imagen" class="modal-fondo" onclick="cerrarAlFondo(event, 'modal-imagen')">
+        <div class="papiro">
+            <span class="boton-cerrar" onclick="cerrarModal('modal-imagen')">&times;</span>
+            <h2>Design Sketches</h2>
+            <p>A fragment of the earliest visual diagrams and geometric forms:</p>
+            <div style="text-align: center; margin: 15px 0;">
+                <div style="border: 2px dashed #8b5a2b; padding: 20px; background: rgba(0,0,0,0.04); border-radius: 4px;">
+                    <div style="font-size: 38px;">⚜️</div>
+                    <p style="font-size: 13px; color: #5a3d28;">[ Symmetrical alignment and texture diagram ]</p>
+                </div>
+            </div>
+            <p>Final dimensions must follow the observed golden ratio.</p>
+        </div>
+    </div>
+
+    <!-- MODAL 3: NOTES -->
+    <div id="modal-nota" class="modal-fondo" onclick="cerrarAlFondo(event, 'modal-nota')">
+        <div class="papiro">
+            <span class="boton-cerrar" onclick="cerrarModal('modal-nota')">&times;</span>
+            <h2>Research Journal</h2>
+            <p><strong>August 14:</strong> Following several trials analyzing the recorded data, the patterns show evident synchronization across intervals.</p>
+            <blockquote style="margin: 15px 0; padding-left: 15px; border-left: 3px solid #8b5a2b; font-style: italic;">
+                "There is no order without prior chaos. The nodes interact once the signal crosses the activation threshold."
+            </blockquote>
+            <p>Continue exploring the peripheral glowing nodes to complete the map.</p>
+        </div>
+    </div>
+
+    <!-- MODAL 4: MAP -->
+    <div id="modal-mapa" class="modal-fondo" onclick="cerrarAlFondo(event, 'modal-mapa')">
+        <div class="papiro">
+            <span class="boton-cerrar" onclick="cerrarModal('modal-mapa')">&times;</span>
+            <h2>Node Cartography</h2>
+            <p>Distribution of the project's cardinal points:</p>
+            <ul style="line-height: 1.8; font-size: 14px;">
+                <li><strong>North Sector:</strong> Base architecture and framework.</li>
+                <li><strong>East Sector:</strong> Soundscapes and audio tracks.</li>
+                <li><strong>South Sector:</strong> Manuscripts and calculation logs.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        const visor = document.getElementById('visor');
+        const lienzo = document.getElementById('lienzo');
+
+        let isPanning = false;
+        let startX, startY;
+        let curX = -600;
+        let curY = -400;
+
+        function actualizarPosicion() {
+            lienzo.style.transform = `translate(${curX}px, ${curY}px)`;
+        }
+        actualizarPosicion();
+
+        function centrarLienzo() {
+            curX = -(3200 - window.innerWidth) / 2;
+            curY = -(2400 - window.innerHeight) / 2;
+            actualizarPosicion();
+        }
+
+        // UNIFIED FUNCTION FOR BOTH MOUSE AND TOUCH
+        function getPos(e) {
+            // Si es un evento táctil (dedo), extrae las coordenadas de e.touches[0]
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            // Si es ratón
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function panStart(e) {
+            // Ignorar arrastre si tocamos un punto, botón o a Clippy
+            if (e.target.closest('.punto-luz') || e.target.closest('.hud-btn') || e.target.closest('#clipy-container') || e.target.closest('.papiro')) return;
+            
+            isPanning = true;
+            visor.classList.add('grabbing');
+            const pos = getPos(e);
+            startX = pos.x - curX;
+            startY = pos.y - curY;
+        }
+
+        function panMove(e) {
+            if (!isPanning) return;
+            // Previene el scroll o "pull-to-refresh" nativo del móvil mientras arrastras el mapa
+            e.preventDefault(); 
+            
+            const pos = getPos(e);
+            curX = pos.x - startX;
+            curY = pos.y - startY;
+
+            // Boundary constraints
+            const minX = window.innerWidth - 3200;
+            const minY = window.innerHeight - 2400;
+            curX = Math.min(0, Math.max(minX, curX));
+            curY = Math.min(0, Math.max(minY, curY));
+
+            actualizarPosicion();
+        }
+
+        function panEnd() {
+            isPanning = false;
+            visor.classList.remove('grabbing');
+        }
+
+        // MOUSE EVENTS
+        visor.addEventListener('mousedown', panStart);
+        window.addEventListener('mousemove', panMove, { passive: false });
+        window.addEventListener('mouseup', panEnd);
+
+        // TOUCH EVENTS (PARA MOVILES Y TABLETS)
+        visor.addEventListener('touchstart', panStart, { passive: false });
+        window.addEventListener('touchmove', panMove, { passive: false });
+        window.addEventListener('touchend', panEnd);
+
+        // Modals
+        function abrirModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.add('activa');
+        }
+
+        function cerrarModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.remove('activa');
+        }
+
+        function cerrarAlFondo(event, id) {
+            if (event.target.classList.contains('modal-fondo')) {
+                cerrarModal(id);
+            }
+        }
+    </script>
+</body>
+</html>
