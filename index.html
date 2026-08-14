@@ -9,6 +9,7 @@
             box-sizing: border-box;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-user-drag: none;
         }
         body, html {
             margin: 0;
@@ -18,22 +19,20 @@
             overflow: hidden;
             background: #0f0d0b;
             font-family: 'Georgia', serif;
-            /* Bloquea por completo el rebote elástico del móvil */
             overscroll-behavior: none;
             touch-action: none;
         }
 
-        /* --- 1. VIEWER & RESPONSIVE CANVAS --- */
+        /* --- 1. VIEWER & PROPORTIONAL CANVAS --- */
         #visor {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             position: fixed;
             top: 0;
             left: 0;
             overflow: hidden;
             cursor: grab;
             background-color: #12100e;
-            /* Evita que el navegador capture los gestos horizontales para ir atrás/adelante */
             touch-action: none;
         }
         #visor.grabbing {
@@ -41,23 +40,27 @@
         }
 
         #lienzo {
-            /* Un 50% extra para que haya buen margen de recorrido sin perderse */
-            width: 150vw;
-            height: 150vh;
             position: absolute;
             top: 0;
             left: 0;
             transform-origin: 0 0;
+            touch-action: none;
+
+            /* Mantiene la proporción del mapa fija para que NUNCA se recorte ni se muevan los puntos */
+            aspect-ratio: 4 / 3; /* Proporción estándar de mapa. Si tu imagen es más panorámica puedes poner 16 / 9 */
+            min-width: 140vw;
+            min-height: 140vh;
+
             background:
                 radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.05) 0%, transparent 70%),
                 url("images/fondo.jpg");
 
-            background-size: cover;
+            /* 100% 100% garantiza que la imagen encaje completa en el lienzo sin cortar esquinas */
+            background-size: 100% 100%;
             background-position: center;
             background-repeat: no-repeat;
 
             border: 4px solid #3d2f1f;
-            touch-action: none;
         }
 
         /* Decorative cartographic elements */
@@ -424,12 +427,12 @@
         let curY = 0;
 
         function actualizarPosicion() {
-            lienzo.style.transform = `translate(${curX}px, ${curY}px)`;
+            lienzo.style.transform = `translate3d(${curX}px, ${curY}px, 0)`;
         }
 
         function getLimites() {
-            const vW = visor.clientWidth;
-            const vH = visor.clientHeight;
+            const vW = window.innerWidth;
+            const vH = window.innerHeight;
             const lW = lienzo.offsetWidth;
             const lH = lienzo.offsetHeight;
 
@@ -450,7 +453,10 @@
             actualizarPosicion();
         }
 
+        // Se centra inmediatamente al inicio
+        centrarLienzo();
         window.addEventListener('load', centrarLienzo);
+
         window.addEventListener('resize', () => {
             const lim = getLimites();
             curX = Math.min(0, Math.max(lim.minX, curX));
@@ -466,12 +472,16 @@
         }
 
         function panStart(e) {
+            if (e.type === 'mousedown' && e.button !== 0) return;
             if (e.target.closest('.punto-luz') || e.target.closest('.hud-btn') || e.target.closest('#clipy-container') || e.target.closest('.papiro')) return;
+
             isPanning = true;
             visor.classList.add('grabbing');
             const pos = getPos(e);
             startX = pos.x - curX;
             startY = pos.y - curY;
+
+            if (e.cancelable) e.preventDefault();
         }
 
         function panMove(e) {
@@ -479,13 +489,12 @@
             if (e.cancelable) e.preventDefault();
 
             const pos = getPos(e);
-            curX = pos.x - startX;
-            curY = pos.y - startY;
+            const nextX = pos.x - startX;
+            const nextY = pos.y - startY;
 
-            // Restricción precisa contra el tamaño real visible del visor
             const lim = getLimites();
-            curX = Math.min(0, Math.max(lim.minX, curX));
-            curY = Math.min(0, Math.max(lim.minY, curY));
+            curX = Math.min(0, Math.max(lim.minX, nextX));
+            curY = Math.min(0, Math.max(lim.minY, nextY));
 
             actualizarPosicion();
         }
@@ -500,7 +509,7 @@
         window.addEventListener('mousemove', panMove, { passive: false });
         window.addEventListener('mouseup', panEnd);
 
-        // Táctil (móviles/tablets)
+        // Táctil (Móvil / Tablet)
         visor.addEventListener('touchstart', panStart, { passive: false });
         window.addEventListener('touchmove', panMove, { passive: false });
         window.addEventListener('touchend', panEnd);
